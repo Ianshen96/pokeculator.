@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lv.50 寶可夢傷害計算器 (GraphQL 即時繁中按需查詢版)</title>
+<style>
+  :root {
+    --bg: #0b0f19;
+    --card-bg: #151e2e;
+    --card-border: #26354a;
+    --accent: #38bdf8;
+    --accent-hover: #0ea5e9;
+    --atk-color: #f87171;
+    --def-color: #60a5fa;
+    --speed-color: #eab308;
+    --text: #f1f5f9;
+    --text-muted: #94a3b8;
+    --danger: #ef4444;
+    --success: #22c55e;
+    --warning: #f59e0b;
+    --input-bg: #090d16;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", sans-serif; }
+  body { background: var(--bg); color: var(--text); padding: 1.5rem; min-height: 100vh; display: flex; justify-content: center; }
+  .container { max-width: 1240px; width: 100%; display: flex; flex-direction: column; gap: 1.25rem; }
+
+  header { text-align: center; margin-bottom: 0.25rem; }
+  header h1 { font-size: 1.75rem; color: var(--accent); letter-spacing: 0.05em; margin-bottom: 0.25rem; }
+  header p { color: var(--text-muted); font-size: 0.85rem; }
+
+  .init-banner { background: #1e293b; border: 1px solid var(--success); padding: 0.5rem 1rem; border-radius: 0.5rem; font-size: 0.85rem; display: flex; align-items: center; justify-content: space-between; color: var(--success); }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+  .card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 0.75rem; padding: 1.25rem; display: flex; flex-direction: column; gap: 0.85rem; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); }
+  .card-header { border-bottom: 1px solid var(--card-border); padding-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; }
+  .card-header h2 { font-size: 1.15rem; }
+
+  .section-title { font-size: 0.8rem; font-weight: 700; color: var(--accent); text-transform: uppercase; border-left: 3px solid var(--accent); padding-left: 0.5rem; margin-top: 0.25rem; }
+
+  .api-search-row { display: flex; gap: 0.5rem; align-items: stretch; }
+  .btn { background: var(--accent); color: #000; border: none; padding: 0.5rem 1rem; border-radius: 0.375rem; font-weight: bold; cursor: pointer; transition: all 0.2s; white-space: nowrap; font-size: 0.85rem; }
+  .btn:hover { background: var(--accent-hover); }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .form-group { display: flex; flex-direction: column; gap: 0.25rem; }
+  .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 0.6rem; align-items: end; }
+  
+  label { font-size: 0.72rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+  input, select { background: var(--input-bg); border: 1px solid var(--card-border); color: var(--text); padding: 0.45rem 0.6rem; border-radius: 0.375rem; font-size: 0.88rem; outline: none; transition: border 0.2s; width: 100%; }
+  input:focus, select:focus { border-color: var(--accent); }
+
+  .stat-badge { background: #1e293b; padding: 0.2rem 0.5rem; border-radius: 0.25rem; font-size: 0.75rem; color: var(--accent); font-weight: bold; }
+  .status-msg { font-size: 0.75rem; min-height: 0.9rem; margin-top: -0.35rem; }
+  .status-msg.error { color: var(--danger); }
+  .status-msg.loading { color: var(--warning); }
+  .status-msg.success { color: var(--success); }
+
+  .checkbox-group { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; user-select: none; font-size: 0.85rem; }
+  .checkbox-group input { width: auto; cursor: pointer; }
+
+  /* Output Section */
+  .result-card { background: #131b2e; border: 1px solid #3b82f6; }
+  .result-main { text-align: center; margin: 0.25rem 0; }
+  .dmg-range { font-size: 2.2rem; font-weight: 800; color: #93c5fd; }
+  .pct-range { font-size: 1.15rem; font-weight: 600; color: var(--text-muted); margin-top: 0.1rem; }
+  .verdict { font-size: 1.05rem; font-weight: 700; margin-top: 0.4rem; }
+  .verdict.ko { color: var(--danger); }
+  .verdict.rand { color: var(--warning); }
+  .verdict.safe { color: var(--success); }
+
+  .speed-order-banner { background: #0f172a; border: 1px dashed var(--speed-color); padding: 0.6rem; border-radius: 0.5rem; text-align: center; font-size: 0.9rem; font-weight: 600; color: var(--speed-color); display: flex; justify-content: space-around; align-items: center; }
+
+  .hp-bar-wrapper { width: 100%; background: #090d16; border-radius: 999px; height: 1.25rem; overflow: hidden; border: 1px solid var(--card-border); position: relative; margin: 0.4rem 0; }
+  .hp-bar-fill { height: 100%; transition: width 0.3s ease; }
+  .rolls-container { display: flex; flex-wrap: wrap; gap: 0.35rem; justify-content: center; background: var(--input-bg); padding: 0.65rem; border-radius: 0.5rem; border: 1px solid var(--card-border); }
+  .roll-chip { background: #1e293b; padding: 0.25rem 0.45rem; border-radius: 0.25rem; font-size: 0.75rem; font-family: monospace; }
+  .roll-chip.ko { background: #7f1d1d; color: #fecaca; font-weight: bold; }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1>Lv.50 寶可夢傷害計算器</h1>
+    <p>全世代繁體中文即時按需查詢・四災/悖謬/Mega 全型態動態載入・順風(+2)速度比對</p>
+  </header>
+
+  <div id="init-banner" class="init-banner">
+    <span>✓ 即時 GraphQL 繁中連線已啟用：直接輸入任何官方繁中名稱（如 古鼎鹿、鐵臂膀、水面具厄鬼椪 等）即可按需查詢！</span>
+  </div>
+
+  <div class="grid">
+    <!-- 攻擊方 -->
+    <div class="card">
+      <div class="card-header">
+        <h2 style="color: var(--atk-color);">攻擊方 (Attacker)</h2>
+        <span id="atk-types-badge" class="stat-badge">無屬性</span>
+      </div>
+
+      <div class="form-group">
+        <label>搜尋寶可夢 (繁體中文 / 英文 / 編號 / 特殊型態)</label>
+        <div class="api-search-row">
+          <input type="text" id="atk-query" placeholder="例: 烈咬陸鯊, 古鼎鹿, 振翼髮, 445">
+          <button class="btn" id="atk-load-btn">載入資料</button>
+        </div>
+      </div>
+      <div id="atk-status" class="status-msg"></div>
+
+      <!-- 招式設定 -->
+      <div class="section-title">招式參數</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>招式屬性</label>
+          <select id="move-type"></select>
+        </div>
+        <div class="form-group">
+          <label>招式類別</label>
+          <select id="move-category">
+            <option value="physical">物理招式</option>
+            <option value="special">特殊招式</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>招式威力 (BP)</label>
+          <input type="number" id="move-power" value="120" min="0" max="300">
+        </div>
+      </div>
+
+      <!-- 攻/特攻數值 -->
+      <div class="section-title">攻擊能力值</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label id="atk-base-label">物攻種族值</label>
+          <input type="number" id="atk-base" value="130" min="1" max="255">
+        </div>
+        <div class="form-group">
+          <label>努力值 (0~252)</label>
+          <input type="number" id="atk-ev" value="252" min="0" max="252" step="4">
+        </div>
+        <div class="form-group">
+          <label>性格修正</label>
+          <select id="atk-nature">
+            <option value="1.1">+10% (固執/內斂等)</option>
+            <option value="1.0" selected>1.0 (無修正)</option>
+            <option value="0.9">-10% (減益)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>攻擊實數值</label>
+          <input type="number" id="atk-stat-total" readonly style="background: #151e2e; color: var(--atk-color); font-weight: bold;">
+        </div>
+      </div>
+
+      <!-- 速度數值 -->
+      <div class="section-title">速度能力值</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>速度種族值</label>
+          <input type="number" id="atk-spe-base" value="102" min="1" max="255">
+        </div>
+        <div class="form-group">
+          <label>速度努力值</label>
+          <input type="number" id="atk-spe-ev" value="252" min="0" max="252" step="4">
+        </div>
+        <div class="form-group">
+          <label>速度性格</label>
+          <select id="atk-spe-nature">
+            <option value="1.1" selected>+10% (爽朗/膽小)</option>
+            <option value="1.0">1.0 (無修正)</option>
+            <option value="0.9">-10% (減速)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>速度實數值</label>
+          <input type="number" id="atk-spe-total" readonly style="background: #151e2e; color: var(--speed-color); font-weight: bold;">
+        </div>
+      </div>
+
+      <!-- 階級與倍率 -->
+      <div class="section-title">倍率與修正</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>攻擊階級</label>
+          <select id="atk-boost">
+            <option value="-6">-6</option><option value="-5">-5</option><option value="-4">-4</option>
+            <option value="-3">-3</option><option value="-2">-2</option><option value="-1">-1</option>
+            <option value="0" selected>0</option>
+            <option value="1">+1</option><option value="2">+2</option><option value="3">+3</option>
+            <option value="4">+4</option><option value="5">+5</option><option value="6">+6</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>速度階級</label>
+          <select id="atk-spe-boost">
+            <option value="-6">-6</option><option value="-5">-5</option><option value="-4">-4</option>
+            <option value="-3">-3</option><option value="-2">-2</option><option value="-1">-1</option>
+            <option value="0" selected>0</option>
+            <option value="1">+1 (龍之舞/蓄能焰襲)</option>
+            <option value="2">+2 (順風 Tailwind 2.0x)</option>
+            <option value="3">+3</option><option value="4">+4</option><option value="5">+5</option><option value="6">+6</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>自訂額外倍率 (倍)</label>
+          <input type="number" id="atk-custom-mod" value="1.0" step="0.05" min="0" placeholder="例: 1.3">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group" style="grid-column: span 2;">
+          <label>預設道具/特性加成</label>
+          <select id="atk-item-mod">
+            <option value="1.0">無加成 (1.0x)</option>
+            <option value="1.3">生命寶珠 (1.3x)</option>
+            <option value="1.5">講究系列 / 太陽力量 (1.5x)</option>
+            <option value="1.2">屬性增強道具 (1.2x)</option>
+            <option value="2.0">大力士 / 純力量 (2.0x)</option>
+          </select>
+        </div>
+        <div class="form-group" style="align-self: center;">
+          <label class="checkbox-group">
+            <input type="checkbox" id="atk-stab"> 本系加成 (STAB 1.5x)
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- 防守方 -->
+    <div class="card">
+      <div class="card-header">
+        <h2 style="color: var(--def-color);">防守方 (Defender)</h2>
+        <span id="def-types-badge" class="stat-badge">無屬性</span>
+      </div>
+
+      <div class="form-group">
+        <label>搜尋寶可夢 (繁體中文 / 英文 / 編號 / 特殊型態)</label>
+        <div class="api-search-row">
+          <input type="text" id="def-query" placeholder="例: 古鼎鹿, 超級噴火龍X, 阿羅拉九尾, 6">
+          <button class="btn" id="def-load-btn">載入資料</button>
+        </div>
+      </div>
+      <div id="def-status" class="status-msg"></div>
+
+      <!-- 屬性設定 -->
+      <div class="section-title">防守屬性</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>第一屬性</label>
+          <select id="def-type1"></select>
+        </div>
+        <div class="form-group">
+          <label>第二屬性</label>
+          <select id="def-type2"></select>
+        </div>
+      </div>
+
+      <!-- HP / 防禦數值 -->
+      <div class="section-title">耐久能力值</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>HP 種族值</label>
+          <input type="number" id="hp-base" value="155" min="1" max="255">
+        </div>
+        <div class="form-group">
+          <label>HP 努力值</label>
+          <input type="number" id="hp-ev" value="252" min="0" max="252" step="4">
+        </div>
+        <div class="form-group" style="grid-column: span 2;">
+          <label>HP 實數值 (Lv.50)</label>
+          <input type="number" id="hp-stat-total" readonly style="background: #151e2e; color: var(--def-color); font-weight: bold;">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label id="def-base-label">物防種族值</label>
+          <input type="number" id="def-base" value="125" min="1" max="255">
+        </div>
+        <div class="form-group">
+          <label>防禦努力值</label>
+          <input type="number" id="def-ev" value="4" min="0" max="252" step="4">
+        </div>
+        <div class="form-group">
+          <label>性格修正</label>
+          <select id="def-nature">
+            <option value="1.1">+10% (大膽/淘氣/溫和/慎重)</option>
+            <option value="1.0" selected>1.0 (無修正)</option>
+            <option value="0.9">-10% (減益)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>防禦實數值</label>
+          <input type="number" id="def-stat-total" readonly style="background: #151e2e; color: var(--def-color); font-weight: bold;">
+        </div>
+      </div>
+
+      <!-- 速度數值 -->
+      <div class="section-title">速度能力值</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>速度種族值</label>
+          <input type="number" id="def-spe-base" value="45" min="1" max="255">
+        </div>
+        <div class="form-group">
+          <label>速度努力值</label>
+          <input type="number" id="def-spe-ev" value="0" min="0" max="252" step="4">
+        </div>
+        <div class="form-group">
+          <label>速度性格</label>
+          <select id="def-spe-nature">
+            <option value="1.1">+10% (爽朗/膽小)</option>
+            <option value="1.0" selected>1.0 (無修正)</option>
+            <option value="0.9">-10% (減速)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>速度實數值</label>
+          <input type="number" id="def-spe-total" readonly style="background: #151e2e; color: var(--speed-color); font-weight: bold;">
+        </div>
+      </div>
+
+      <!-- 階級與倍率 -->
+      <div class="section-title">倍率與修正</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>防禦階級</label>
+          <select id="def-boost">
+            <option value="-6">-6</option><option value="-5">-5</option><option value="-4">-4</option>
+            <option value="-3">-3</option><option value="-2">-2</option><option value="-1">-1</option>
+            <option value="0" selected>0</option>
+            <option value="1">+1</option><option value="2">+2</option><option value="3">+3</option>
+            <option value="4">+4</option><option value="5">+5</option><option value="6">+6</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>速度階級</label>
+          <select id="def-spe-boost">
+            <option value="-6">-6</option><option value="-5">-5</option><option value="-4">-4</option>
+            <option value="-3">-3</option><option value="-2">-2</option><option value="-1">-1</option>
+            <option value="0" selected>0</option>
+            <option value="1">+1 (龍之舞/蓄能焰襲)</option>
+            <option value="2">+2 (順風 Tailwind 2.0x)</option>
+            <option value="3">+3</option><option value="4">+4</option><option value="5">+5</option><option value="6">+6</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>自訂防守倍率 (倍)</label>
+          <input type="number" id="def-custom-mod" value="1.0" step="0.05" min="0" placeholder="例: 0.75">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group" style="grid-column: span 2;">
+          <label>減傷場地/狀態</label>
+          <select id="def-screen">
+            <option value="1.0">無減傷 (1.0x)</option>
+            <option value="0.5">單打 牆壁減傷 (0.5x)</option>
+            <option value="0.66">雙打 牆壁減傷 (0.66x)</option>
+            <option value="0.75">雙打 範圍招式分散 (0.75x)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 計算結果卡片 -->
+  <div class="card result-card">
+    <div class="card-header">
+      <h2 style="color: #93c5fd;">傷害與對戰判定 (Lv.50 標準)</h2>
+      <span id="effectiveness-badge" class="stat-badge">屬性倍率: 1.0x</span>
+    </div>
+
+    <!-- 速度出手順序指示 -->
+    <div class="speed-order-banner" id="speed-banner">
+      <span id="speed-atk-stat">攻擊方速度: 0</span>
+      <span id="speed-verdict">⚡ 速度判定中...</span>
+      <span id="speed-def-stat">防守方速度: 0</span>
+    </div>
+
+    <div class="result-main">
+      <div class="dmg-range" id="dmg-range-text">0 ~ 0</div>
+      <div class="pct-range" id="pct-range-text">(0% ~ 0%)</div>
+      <div class="verdict" id="verdict-text">計算中...</div>
+    </div>
+
+    <div class="hp-bar-wrapper">
+      <div class="hp-bar-fill" id="hp-bar" style="width: 100%; background: var(--success);"></div>
+    </div>
+
+    <div class="form-group">
+      <label>16 步離散隨機亂數傷害 (85% ~ 100%)：</label>
+      <div class="rolls-container" id="rolls-box"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ==================== 1. 屬性相剋矩陣 ====================
+const TYPE_NAMES = {
+  normal: "一般", fire: "火", water: "水", electric: "電", grass: "草", ice: "冰",
+  fighting: "格鬥", poison: "毒", ground: "地面", flying: "飛行", psychic: "超能力",
+  bug: "蟲", rock: "岩石", ghost: "幽靈", dragon: "龍", dark: "惡", steel: "鋼", fairy: "妖精", none: "無"
+};
+
+const TYPE_CHART = {
+  normal: { rock: 0.5, ghost: 0, steel: 0.5 },
+  fire: { fire: 0.5, water: 0.5, grass: 2, ice: 2, bug: 2, rock: 0.5, dragon: 0.5, steel: 2 },
+  water: { fire: 2, water: 0.5, grass: 0.5, ground: 2, rock: 2, dragon: 0.5 },
+  electric: { water: 2, electric: 0.5, grass: 0.5, ground: 0, flying: 2, dragon: 0.5 },
+  grass: { fire: 0.5, water: 2, grass: 0.5, poison: 0.5, ground: 2, flying: 0.5, bug: 0.5, rock: 2, dragon: 0.5, steel: 0.5 },
+  ice: { fire: 0.5, water: 0.5, grass: 2, ice: 0.5, ground: 2, flying: 2, dragon: 2, steel: 0.5 },
+  fighting: { normal: 2, ice: 2, poison: 0.5, flying: 0.5, psychic: 0.5, bug: 0.5, rock: 2, ghost: 0, dark: 2, steel: 2, fairy: 0.5 },
+  poison: { grass: 2, poison: 0.5, ground: 0.5, rock: 0.5, ghost: 0.5, steel: 0, fairy: 2 },
+  ground: { fire: 2, electric: 2, grass: 0.5, poison: 2, flying: 0, bug: 0.5, rock: 2, steel: 2 },
+  flying: { electric: 0.5, grass: 2, fighting: 2, bug: 2, rock: 0.5, steel: 0.5 },
+  psychic: { fighting: 2, poison: 2, psychic: 0.5, dark: 0, steel: 0.5 },
+  bug: { fire: 0.5, grass: 2, fighting: 0.5, poison: 0.5, flying: 0.5, psychic: 2, ghost: 0.5, dark: 2, steel: 0.5, fairy: 0.5 },
+  rock: { fire: 2, ice: 2, fighting: 0.5, ground: 0.5, flying: 2, bug: 2, steel: 0.5 },
+  ghost: { normal: 0, psychic: 2, ghost: 2, dark: 0.5 },
+  dragon: { dragon: 2, steel: 0.5, fairy: 0 },
+  dark: { fighting: 0.5, psychic: 2, ghost: 2, dark: 0.5, fairy: 0.5 },
+  steel: { fire: 0.5, water: 0.5, electric: 0.5, ice: 2, rock: 2, steel: 0.5, fairy: 2 },
+  fairy: { fire: 0.5, fighting: 2, poison: 0.5, dragon: 2, dark: 2, steel: 0.5 }
+};
+
+function getEffectiveness(moveType, t1, t2) {
+  let eff = 1.0;
+  if (TYPE_CHART[moveType]) {
+    if (t1 !== "none" && TYPE_CHART[moveType][t1] !== undefined) eff *= TYPE_CHART[moveType][t1];
+    if (t2 !== "none" && TYPE_CHART[moveType][t2] !== undefined) eff *= TYPE_CHART[moveType][t2];
+  }
+  return eff;
+}
+
+// ==================== 2. GraphQL 即時按需繁中查詢核心 ====================
+// 形態詞綴正規化
+const FORM_RULES = [
+  { prefix: "超級", suffix: "X", transform: (name) => `${name}-mega-x` },
+  { prefix: "超級", suffix: "Y", transform: (name) => `${name}-mega-y` },
+  { prefix: "超級", suffix: "", transform: (name) => `${name}-mega` },
+  { prefix: "Mega", suffix: "X", transform: (name) => `${name}-mega-x` },
+  { prefix: "Mega", suffix: "Y", transform: (name) => `${name}-mega-y` },
+  { prefix: "Mega", suffix: "", transform: (name) => `${name}-mega` },
+  { prefix: "阿羅拉", suffix: "", transform: (name) => `${name}-alola` },
+  { prefix: "伽勒爾", suffix: "", transform: (name) => `${name}-galar` },
+  { prefix: "洗翠", suffix: "", transform: (name) => `${name}-hisui` },
+  { prefix: "帕底亞", suffix: "", transform: (name) => `${name}-paldea` },
+  { prefix: "火面具", suffix: "", transform: () => "ogerpon-hearthflame-mask" },
+  { prefix: "水面具", suffix: "", transform: () => "ogerpon-wellspring-mask" },
+  { prefix: "岩面具", suffix: "", transform: () => "ogerpon-cornerstone-mask" },
+  { prefix: "草面具", suffix: "", transform: () => "ogerpon" },
+  { prefix: "", suffix: "火面具", transform: () => "ogerpon-hearthflame-mask" },
+  { prefix: "", suffix: "水面具", transform: () => "ogerpon-wellspring-mask" },
+  { prefix: "", suffix: "岩面具", transform: () => "ogerpon-cornerstone-mask" },
+  { prefix: "靈獸", suffix: "", transform: (name) => `${name}-therian` },
+  { prefix: "化身", suffix: "", transform: (name) => `${name}-incarnate` },
+  { prefix: "連擊流", suffix: "", transform: () => "urshifu-rapid-strike" },
+  { prefix: "一擊流", suffix: "", transform: () => "urshifu-single-strike" },
+  { prefix: "水", suffix: "洛托姆", transform: () => "rotom-wash" },
+  { prefix: "火", suffix: "洛托姆", transform: () => "rotom-heat" },
+  { prefix: "草", suffix: "洛托姆", transform: () => "rotom-mow" },
+  { prefix: "冰", suffix: "洛托姆", transform: () => "rotom-frost" },
+  { prefix: "飛", suffix: "洛托姆", transform: () => "rotom-fan" },
+  { prefix: "雄性", suffix: "", transform: (name) => `${name}-male` },
+  { prefix: "雌性", suffix: "", transform: (name) => `${name}-female` }
+];
+
+// 透過 PokeAPI GraphQL 端點查詢繁體中文名 (language_id: 4 為繁體中文, 12 為簡體中文)
+async function queryGraphQLByChineseName(chineseName) {
+  const query = `
+    query getSpeciesByName($name: String!) {
+      pokemon_v2_pokemonspeciesname(where: {name: {_eq: $name}, _or: [{language_id: {_eq: 4}}, {language_id: {_eq: 12}}]}) {
+        name
+        pokemon_v2_pokemonspecy {
+          id
+          name
+        }
+      }
+    }
+  `;
+
+  const res = await fetch("https://beta.pokeapi.co/graphql/v1beta", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      query: query,
+      variables: { name: chineseName }
+    })
+  });
+
+  if (!res.ok) throw new Error("GraphQL 連線失敗");
+  const json = await res.json();
+  const list = json.data?.pokemon_v2_pokemonspeciesname;
+  if (list && list.length > 0) {
+    return list[0].pokemon_v2_pokemonspecy.name;
+  }
+  return null;
+}
+
+// 智慧解析使用者輸入
+async function resolveQueryToApiName(userInput) {
+  let q = userInput.trim();
+  if (!q) throw new Error("請輸入寶可夢名稱或編號");
+
+  // 1. 純英文或純編號直接使用
+  if (!/[\u4e00-\u9fa5]/.test(q)) {
+    return { apiName: q.toLowerCase().replace(/\s+/g, "-"), displayName: q };
+  }
+
+  // 2. 檢查特殊形態詞綴
+  for (const rule of FORM_RULES) {
+    let coreName = q;
+    let matched = false;
+
+    if (rule.prefix && coreName.startsWith(rule.prefix)) {
+      coreName = coreName.slice(rule.prefix.length);
+      matched = true;
+    }
+    if (rule.suffix && coreName.endsWith(rule.suffix)) {
+      coreName = coreName.slice(0, coreName.length - rule.suffix.length);
+      matched = true;
+    }
+
+    if (matched) {
+      coreName = coreName.trim();
+      // 特殊免查詢常數
+      if (coreName === "厄鬼椪" || coreName === "洛托姆" || coreName === "武道熊師") {
+        return { apiName: rule.transform(coreName), displayName: q };
+      }
+      // 透過 GraphQL 即時查詢基礎 species
+      const baseSpeciesName = await queryGraphQLByChineseName(coreName);
+      if (baseSpeciesName) {
+        return { apiName: rule.transform(baseSpeciesName), displayName: q };
+      }
+    }
+  }
+
+  // 3. 基礎中文名稱直接 GraphQL 查詢 (支援 古鼎鹿、振翼髮、妙蛙種子 等)
+  const speciesName = await queryGraphQLByChineseName(q);
+  if (speciesName) {
+    return { apiName: speciesName, displayName: q };
+  }
+
+  throw new Error(`查無「${q}」，請確認繁體中文官方名稱或形態`);
+}
+
+// ==================== 3. 數值與對戰核心 ====================
+function calcStat(base, ev, nature, isHP = false) {
+  base = Number(base) || 0;
+  ev = Number(ev) || 0;
+  nature = Number(nature) || 1.0;
+  const iv = 31, level = 50;
+  if (isHP) {
+    if (base === 1) return 1;
+    return Math.floor(((base * 2 + iv + Math.floor(ev / 4)) * level) / 100) + level + 10;
+  }
+  return Math.floor((Math.floor(((base * 2 + iv + Math.floor(ev / 4)) * level) / 100) + 5) * nature);
+}
+
+function getBoostMultiplier(stage) {
+  stage = Number(stage);
+  return stage >= 0 ? (2 + stage) / 2 : 2 / (2 - stage);
+}
+
+let attackerData = null;
+let defenderData = null;
+
+function calculateDamage() {
+  const isSpecial = document.getElementById("move-category").value === "special";
+  const movePower = Number(document.getElementById("move-power").value) || 0;
+  const moveType = document.getElementById("move-type").value;
+
+  // 攻擊方數值
+  const atkBase = Number(document.getElementById("atk-base").value);
+  const atkEV = Number(document.getElementById("atk-ev").value);
+  const atkNature = Number(document.getElementById("atk-nature").value);
+  const atkStat = calcStat(atkBase, atkEV, atkNature, false);
+  document.getElementById("atk-stat-total").value = atkStat;
+
+  // 攻擊方速度
+  const atkSpeBase = Number(document.getElementById("atk-spe-base").value);
+  const atkSpeEV = Number(document.getElementById("atk-spe-ev").value);
+  const atkSpeNature = Number(document.getElementById("atk-spe-nature").value);
+  const atkSpeStat = calcStat(atkSpeBase, atkSpeEV, atkSpeNature, false);
+  const atkSpeStage = Number(document.getElementById("atk-spe-boost").value);
+  const finalAtkSpe = Math.floor(atkSpeStat * getBoostMultiplier(atkSpeStage));
+  document.getElementById("atk-spe-total").value = atkSpeStat;
+
+  const atkStage = Number(document.getElementById("atk-boost").value);
+  const atkItemMod = Number(document.getElementById("atk-item-mod").value);
+  const atkCustomMod = Number(document.getElementById("atk-custom-mod").value) || 1.0;
+  const finalAtk = Math.floor(atkStat * getBoostMultiplier(atkStage) * atkItemMod * atkCustomMod);
+
+  // 防守方數值
+  const hpBase = Number(document.getElementById("hp-base").value);
+  const hpEV = Number(document.getElementById("hp-ev").value);
+  const maxHP = calcStat(hpBase, hpEV, 1.0, true);
+  document.getElementById("hp-stat-total").value = maxHP;
+
+  const defBase = Number(document.getElementById("def-base").value);
+  const defEV = Number(document.getElementById("def-ev").value);
+  const defNature = Number(document.getElementById("def-nature").value);
+  const defStat = calcStat(defBase, defEV, defNature, false);
+  document.getElementById("def-stat-total").value = defStat;
+
+  // 防守方速度
+  const defSpeBase = Number(document.getElementById("def-spe-base").value);
+  const defSpeEV = Number(document.getElementById("def-spe-ev").value);
+  const defSpeNature = Number(document.getElementById("def-spe-nature").value);
+  const defSpeStat = calcStat(defSpeBase, defSpeEV, defSpeNature, false);
+  const defSpeStage = Number(document.getElementById("def-spe-boost").value);
+  const finalDefSpe = Math.floor(defSpeStat * getBoostMultiplier(defSpeStage));
+  document.getElementById("def-spe-total").value = defSpeStat;
+
+  const defStage = Number(document.getElementById("def-boost").value);
+  const screenMod = Number(document.getElementById("def-screen").value);
+  const defCustomMod = Number(document.getElementById("def-custom-mod").value) || 1.0;
+  const finalDef = Math.floor(defStat * getBoostMultiplier(defStage));
+
+  const defType1 = document.getElementById("def-type1").value;
+  const defType2 = document.getElementById("def-type2").value;
+  const eff = getEffectiveness(moveType, defType1, defType2);
+  const stab = document.getElementById("atk-stab").checked ? 1.5 : 1.0;
+
+  document.getElementById("effectiveness-badge").textContent = `屬性倍率: ${eff}x`;
+
+  // 速度判定
+  document.getElementById("speed-atk-stat").textContent = `攻擊方速度: ${finalAtkSpe} (${atkSpeStat})`;
+  document.getElementById("speed-def-stat").textContent = `防守方速度: ${finalDefSpe} (${defSpeStat})`;
+  const speedVerdict = document.getElementById("speed-verdict");
+  if (finalAtkSpe > finalDefSpe) {
+    speedVerdict.textContent = `⚡ 攻擊方先手 (+${finalAtkSpe - finalDefSpe})`;
+    speedVerdict.style.color = "var(--atk-color)";
+  } else if (finalAtkSpe < finalDefSpe) {
+    speedVerdict.textContent = `🛡️ 防守方先手 (+${finalDefSpe - finalAtkSpe})`;
+    speedVerdict.style.color = "var(--def-color)";
+  } else {
+    speedVerdict.textContent = `⚔️ 同速 (50% 隨機先手)`;
+    speedVerdict.style.color = "var(--speed-color)";
+  }
+
+  // 傷害計算
+  if (movePower === 0 || eff === 0) {
+    document.getElementById("dmg-range-text").textContent = "0";
+    document.getElementById("pct-range-text").textContent = "(0%)";
+    const verdictEl = document.getElementById("verdict-text");
+    verdictEl.textContent = "無法造成傷害 (沒有效果)";
+    verdictEl.className = "verdict safe";
+    document.getElementById("hp-bar").style.width = "100%";
+    document.getElementById("rolls-box").innerHTML = "<div class='roll-chip'>0</div>";
+    return;
+  }
+
+  const baseDmg = Math.floor((Math.floor((22 * movePower * finalAtk) / Math.max(1, finalDef)) / 50) + 2);
+
+  const rolls = [];
+  let koCount = 0;
+  for (let r = 85; r <= 100; r++) {
+    let dmg = Math.floor((baseDmg * r) / 100);
+    dmg = Math.floor(dmg * screenMod);
+    dmg = Math.floor(dmg * stab);
+    dmg = Math.floor(dmg * eff);
+    dmg = Math.floor(dmg * defCustomMod);
+    rolls.push(dmg);
+    if (dmg >= maxHP) koCount++;
+  }
+
+  const minDmg = rolls[0];
+  const maxDmg = rolls[15];
+  const minPct = ((minDmg / maxHP) * 100).toFixed(1);
+  const maxPct = ((maxDmg / maxHP) * 100).toFixed(1);
+
+  document.getElementById("dmg-range-text").textContent = `${minDmg} ~ ${maxDmg}`;
+  document.getElementById("pct-range-text").textContent = `(${minPct}% ~ ${maxPct}%)`;
+
+  const verdictEl = document.getElementById("verdict-text");
+  if (minDmg >= maxHP) {
+    verdictEl.textContent = "確定一擊擊倒 (100% 確一)";
+    verdictEl.className = "verdict ko";
+  } else if (maxDmg >= maxHP) {
+    const chance = ((koCount / 16) * 100).toFixed(1);
+    verdictEl.textContent = `亂數一擊擊倒 (${chance}% 機率 KO)`;
+    verdictEl.className = "verdict rand";
+  } else {
+    const hits = Math.ceil(maxHP / maxDmg);
+    verdictEl.textContent = `無法一擊擊倒 (預估 ${hits} 次攻擊 KO)`;
+    verdictEl.className = "verdict safe";
+  }
+
+  const avgDmg = (minDmg + maxDmg) / 2;
+  const remHpPct = Math.max(0, 100 - (avgDmg / maxHP) * 100);
+  const hpBar = document.getElementById("hp-bar");
+  hpBar.style.width = `${remHpPct}%`;
+  hpBar.style.background = remHpPct > 50 ? "var(--success)" : remHpPct > 20 ? "var(--warning)" : "var(--danger)";
+
+  const rollsBox = document.getElementById("rolls-box");
+  rollsBox.innerHTML = "";
+  rolls.forEach(dmg => {
+    const chip = document.createElement("div");
+    chip.className = `roll-chip ${dmg >= maxHP ? 'ko' : ''}`;
+    chip.textContent = dmg;
+    rollsBox.appendChild(chip);
+  });
+}
+
+// ==================== 4. PokeAPI 資料載入 ====================
+async function fetchPokemon(query) {
+  const { apiName, displayName } = await resolveQueryToApiName(query);
+
+  const response = await fetch(`https://pokeapi.co/api/v2/pokemon/${apiName}`);
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error(`查無「${query}」(API: ${apiName})`);
+    }
+    throw new Error(`連線失敗 (${response.status})`);
+  }
+  const data = await response.json();
+
+  const stats = {};
+  data.stats.forEach(s => { stats[s.stat.name] = s.base_stat; });
+
+  const types = data.types.map(t => t.type.name);
+
+  return {
+    displayName: displayName,
+    rawName: data.name,
+    id: data.id,
+    hp: stats.hp || 100,
+    atk: stats.attack || 100,
+    def: stats.defense || 100,
+    spa: stats["special-attack"] || 100,
+    spd: stats["special-defense"] || 100,
+    spe: stats.speed || 100,
+    type1: types[0] || "normal",
+    type2: types[1] || "none"
+  };
+}
+
+function updateAttackerStats() {
+  if (!attackerData) return;
+  const isSpecial = document.getElementById("move-category").value === "special";
+  document.getElementById("atk-base-label").textContent = isSpecial ? "特攻種族值" : "物攻種族值";
+  document.getElementById("atk-base").value = isSpecial ? attackerData.spa : attackerData.atk;
+  document.getElementById("atk-spe-base").value = attackerData.spe;
+}
+
+function checkSTAB() {
+  if (!attackerData) return;
+  const moveType = document.getElementById("move-type").value;
+  const isStab = (moveType === attackerData.type1 || moveType === attackerData.type2);
+  document.getElementById("atk-stab").checked = isStab;
+}
+
+function updateDefenderStats() {
+  if (!defenderData) return;
+  const isSpecial = document.getElementById("move-category").value === "special";
+  document.getElementById("def-base-label").textContent = isSpecial ? "特防種族值" : "物防種族值";
+  document.getElementById("def-base").value = isSpecial ? defenderData.spd : defenderData.def;
+  document.getElementById("def-spe-base").value = defenderData.spe;
+}
+
+async function loadAttacker() {
+  const input = document.getElementById("atk-query");
+  const btn = document.getElementById("atk-load-btn");
+  const status = document.getElementById("atk-status");
+
+  btn.disabled = true;
+  status.textContent = "即時 GraphQL 查詢中...";
+  status.className = "status-msg loading";
+
+  try {
+    const data = await fetchPokemon(input.value);
+    attackerData = data;
+    
+    document.getElementById("atk-types-badge").textContent = `${data.displayName} [${TYPE_NAMES[data.type1] || data.type1}${data.type2 !== 'none' ? '/' + (TYPE_NAMES[data.type2] || data.type2) : ''}]`;
+    updateAttackerStats();
+    checkSTAB();
+    calculateDamage();
+
+    status.textContent = `✓ 成功載入: ${data.displayName} (#${data.id})`;
+    status.className = "status-msg success";
+  } catch (err) {
+    status.textContent = `✕ ${err.message}`;
+    status.className = "status-msg error";
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function loadDefender() {
+  const input = document.getElementById("def-query");
+  const btn = document.getElementById("def-load-btn");
+  const status = document.getElementById("def-status");
+
+  btn.disabled = true;
+  status.textContent = "即時 GraphQL 查詢中...";
+  status.className = "status-msg loading";
+
+  try {
+    const data = await fetchPokemon(input.value);
+    defenderData = data;
+
+    document.getElementById("def-types-badge").textContent = `${data.displayName} [${TYPE_NAMES[data.type1] || data.type1}${data.type2 !== 'none' ? '/' + (TYPE_NAMES[data.type2] || data.type2) : ''}]`;
+    document.getElementById("def-type1").value = data.type1;
+    document.getElementById("def-type2").value = data.type2;
+    document.getElementById("hp-base").value = data.hp;
+    updateDefenderStats();
+    calculateDamage();
+
+    status.textContent = `✓ 成功載入: ${data.displayName} (#${data.id})`;
+    status.className = "status-msg success";
+  } catch (err) {
+    status.textContent = `✕ ${err.message}`;
+    status.className = "status-msg error";
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ==================== 5. 初始化與事件監聽 ====================
+function initUI() {
+  const moveType = document.getElementById("move-type");
+  const defT1 = document.getElementById("def-type1");
+  const defT2 = document.getElementById("def-type2");
+
+  Object.entries(TYPE_NAMES).forEach(([key, name]) => {
+    if (key !== "none") {
+      moveType.appendChild(new Option(name, key));
+      defT1.appendChild(new Option(name, key));
+    }
+    defT2.appendChild(new Option(name, key));
+  });
+
+  moveType.value = "ground";
+  defT1.value = "dark";
+  defT2.value = "ground";
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  initUI();
+
+  document.getElementById("atk-load-btn").addEventListener("click", loadAttacker);
+  document.getElementById("def-load-btn").addEventListener("click", loadDefender);
+
+  document.getElementById("atk-query").addEventListener("keypress", (e) => {
+    if (e.key === "Enter") loadAttacker();
+  });
+  document.getElementById("def-query").addEventListener("keypress", (e) => {
+    if (e.key === "Enter") loadDefender();
+  });
+
+  document.getElementById("move-category").addEventListener("change", () => {
+    updateAttackerStats();
+    updateDefenderStats();
+    calculateDamage();
+  });
+
+  document.getElementById("move-type").addEventListener("change", () => {
+    checkSTAB();
+    calculateDamage();
+  });
+
+  document.querySelectorAll("input, select").forEach(el => {
+    if (el.id !== "atk-query" && el.id !== "def-query") {
+      el.addEventListener("input", calculateDamage);
+      el.addEventListener("change", calculateDamage);
+    }
+  });
+
+  // 預設載入對戰範例：烈咬陸鯊 vs 古鼎鹿
+  document.getElementById("atk-query").value = "烈咬陸鯊";
+  document.getElementById("def-query").value = "古鼎鹿";
+  loadAttacker();
+  loadDefender();
+});
+</script>
+</body>
+</html>
