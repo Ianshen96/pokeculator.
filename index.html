@@ -14,6 +14,7 @@
     --atk-color: #f87171;
     --def-color: #60a5fa;
     --speed-color: #eab308;
+    --env-color: #a855f7;
     --text: #f1f5f9;
     --text-muted: #94a3b8;
     --danger: #ef4444;
@@ -30,6 +31,9 @@
   header p { color: var(--text-muted); font-size: 0.85rem; }
 
   .init-banner { background: #1e293b; border: 1px solid var(--success); padding: 0.5rem 1rem; border-radius: 0.5rem; font-size: 0.85rem; display: flex; align-items: center; justify-content: space-between; color: var(--success); }
+
+  .env-card { background: #18132a; border: 1px solid #6b21a8; }
+  .env-header { color: #c084fc; font-weight: bold; font-size: 1rem; margin-bottom: 0.5rem; }
 
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
   @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
@@ -85,11 +89,38 @@
 <div class="container">
   <header>
     <h1>Lv.50 寶可夢傷害計算器</h1>
-    <p>全世代繁體中文即時按需查詢・四災/悖謬/Mega 全型態動態載入・順風(+2)速度比對</p>
+    <p>全世代繁體中文即時按需查詢・天氣與場地加成・四災/悖謬/Mega 全型態動態載入</p>
   </header>
 
   <div id="init-banner" class="init-banner">
-    <span>✓ 即時 GraphQL 繁中連線已啟用：直接輸入任何官方繁中名稱（如 古鼎鹿、鐵臂膀、水面具厄鬼椪 等）即可按需查詢！</span>
+    <span>✓ 即時 GraphQL 繁中連線已啟用：支援天氣、場地、道具加成、特性加成與撲擊防禦結算！</span>
+  </div>
+
+  <!-- 天氣與場地環境卡片 -->
+  <div class="card env-card">
+    <div class="env-header">🌐 對戰環境設定 (天氣 / 場地)</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>天氣 (Weather)</label>
+        <select id="env-weather">
+          <option value="none" selected>無天氣 (標準)</option>
+          <option value="sun">大晴天 / 日照 (火 1.5x, 水 0.5x)</option>
+          <option value="rain">下雨 / 雨天 (水 1.5x, 火 0.5x)</option>
+          <option value="sandstorm">沙暴 (岩石系特防 1.5x)</option>
+          <option value="snow">雪天 / 冰雹 (冰系物防 1.5x)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>場地 (Terrain)</label>
+        <select id="env-terrain">
+          <option value="none" selected>無場地 (標準)</option>
+          <option value="electric">電氣場地 (地面電系招式 1.3x)</option>
+          <option value="grassy">青草場地 (地面草系招式 1.3x, 地震等 0.5x)</option>
+          <option value="psychic">精神場地 (地面超能招式 1.3x)</option>
+          <option value="misty">薄霧場地 (地面承受龍系招式 0.5x)</option>
+        </select>
+      </div>
+    </div>
   </div>
 
   <div class="grid">
@@ -103,14 +134,23 @@
       <div class="form-group">
         <label>搜尋寶可夢 (繁體中文 / 英文 / 編號 / 特殊型態)</label>
         <div class="api-search-row">
-          <input type="text" id="atk-query" placeholder="例: 烈咬陸鯊, 古鼎鹿, 振翼髮, 445">
-          <button class="btn" id="atk-load-btn">載入資料</button>
+          <input type="text" id="atk-query" placeholder="例: 藏瑪然特, 巨金怪, 烈咬陸鯊, 445">
+          <button class="btn" id="atk-load-btn">載入寶可夢</button>
         </div>
       </div>
       <div id="atk-status" class="status-msg"></div>
 
-      <!-- 招式設定 -->
+      <!-- 招式搜尋與設定 -->
       <div class="section-title">招式參數</div>
+      <div class="form-group">
+        <label>搜尋招式 (繁體中文 / 英文 / 編號)</label>
+        <div class="api-search-row">
+          <input type="text" id="move-query" placeholder="例: 撲擊, 陀螺球, 電球, 地震">
+          <button class="btn" id="move-load-btn">載入招式</button>
+        </div>
+      </div>
+      <div id="move-status" class="status-msg"></div>
+
       <div class="form-row">
         <div class="form-group">
           <label>招式屬性</label>
@@ -125,7 +165,7 @@
         </div>
         <div class="form-group">
           <label>招式威力 (BP)</label>
-          <input type="number" id="move-power" value="120" min="0" max="300">
+          <input type="number" id="move-power" value="100" min="0" max="300">
         </div>
       </div>
 
@@ -149,8 +189,33 @@
           </select>
         </div>
         <div class="form-group">
-          <label>攻擊實數值</label>
+          <label id="atk-stat-label">攻擊實數值</label>
           <input type="number" id="atk-stat-total" readonly style="background: #151e2e; color: var(--atk-color); font-weight: bold;">
+        </div>
+      </div>
+
+      <!-- 攻擊方物防 (供撲擊使用) -->
+      <div class="section-title">攻擊方防禦值 (撲擊參照)</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>物防種族值</label>
+          <input type="number" id="atk-def-base" value="95" min="1" max="255">
+        </div>
+        <div class="form-group">
+          <label>物防努力值</label>
+          <input type="number" id="atk-def-ev" value="0" min="0" max="252" step="4">
+        </div>
+        <div class="form-group">
+          <label>物防性格</label>
+          <select id="atk-def-nature">
+            <option value="1.1">+10% (淘氣/大膽)</option>
+            <option value="1.0" selected>1.0 (無修正)</option>
+            <option value="0.9">-10% (減益)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>物防實數值</label>
+          <input type="number" id="atk-def-total" readonly style="background: #151e2e; color: var(--def-color); font-weight: bold;">
         </div>
       </div>
 
@@ -183,12 +248,22 @@
       <div class="section-title">倍率與修正</div>
       <div class="form-row">
         <div class="form-group">
-          <label>攻擊階級</label>
+          <label id="atk-boost-label">攻擊階級</label>
           <select id="atk-boost">
             <option value="-6">-6</option><option value="-5">-5</option><option value="-4">-4</option>
             <option value="-3">-3</option><option value="-2">-2</option><option value="-1">-1</option>
             <option value="0" selected>0</option>
             <option value="1">+1</option><option value="2">+2</option><option value="3">+3</option>
+            <option value="4">+4</option><option value="5">+5</option><option value="6">+6</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>物防階級 (撲擊用)</label>
+          <select id="atk-def-boost">
+            <option value="-6">-6</option><option value="-5">-5</option><option value="-4">-4</option>
+            <option value="-3">-3</option><option value="-2">-2</option><option value="-1">-1</option>
+            <option value="0" selected>0</option>
+            <option value="1">+1</option><option value="2">+2 (鐵壁 2.0x)</option><option value="3">+3</option>
             <option value="4">+4</option><option value="5">+5</option><option value="6">+6</option>
           </select>
         </div>
@@ -203,20 +278,20 @@
             <option value="3">+3</option><option value="4">+4</option><option value="5">+5</option><option value="6">+6</option>
           </select>
         </div>
-        <div class="form-group">
-          <label>自訂額外倍率 (倍)</label>
-          <input type="number" id="atk-custom-mod" value="1.0" step="0.05" min="0" placeholder="例: 1.3">
-        </div>
       </div>
 
       <div class="form-row">
-        <div class="form-group" style="grid-column: span 2;">
-          <label>預設道具/特性加成</label>
+        <div class="form-group">
+          <label>特性加成 (倍率)</label>
+          <input type="number" id="atk-ability-mod" value="1.0" step="0.05" min="0" placeholder="例: 1.3 (強壯之顎/鐵拳等)">
+        </div>
+        <div class="form-group">
+          <label>道具加成</label>
           <select id="atk-item-mod">
-            <option value="1.0">無加成 (1.0x)</option>
+            <option value="1.0">無道具 (1.0x)</option>
             <option value="1.3">生命寶珠 (1.3x)</option>
-            <option value="1.5">講究系列 / 太陽力量 (1.5x)</option>
-            <option value="1.2">屬性增強道具 (1.2x)</option>
+            <option value="1.5">講究頭帶 / 講究眼鏡 (1.5x)</option>
+            <option value="1.2">屬性增強道具 / 達人帶 (1.2x)</option>
             <option value="2.0">大力士 / 純力量 (2.0x)</option>
           </select>
         </div>
@@ -239,7 +314,7 @@
         <label>搜尋寶可夢 (繁體中文 / 英文 / 編號 / 特殊型態)</label>
         <div class="api-search-row">
           <input type="text" id="def-query" placeholder="例: 古鼎鹿, 超級噴火龍X, 阿羅拉九尾, 6">
-          <button class="btn" id="def-load-btn">載入資料</button>
+          <button class="btn" id="def-load-btn">載入寶可夢</button>
         </div>
       </div>
       <div id="def-status" class="status-msg"></div>
@@ -292,7 +367,7 @@
           </select>
         </div>
         <div class="form-group">
-          <label>防禦實數值</label>
+          <label id="def-stat-label">防禦實數值</label>
           <input type="number" id="def-stat-total" readonly style="background: #151e2e; color: var(--def-color); font-weight: bold;">
         </div>
       </div>
@@ -347,8 +422,8 @@
           </select>
         </div>
         <div class="form-group">
-          <label>自訂防守倍率 (倍)</label>
-          <input type="number" id="def-custom-mod" value="1.0" step="0.05" min="0" placeholder="例: 0.75">
+          <label>特性加成 (減傷倍率)</label>
+          <input type="number" id="def-ability-mod" value="1.0" step="0.05" min="0" placeholder="例: 0.75 (多重鱗片/冰凍之軀等)">
         </div>
       </div>
 
@@ -436,7 +511,6 @@ function getEffectiveness(moveType, t1, t2) {
 }
 
 // ==================== 2. GraphQL 即時按需繁中查詢核心 ====================
-// 形態詞綴正規化
 const FORM_RULES = [
   { prefix: "超級", suffix: "X", transform: (name) => `${name}-mega-x` },
   { prefix: "超級", suffix: "Y", transform: (name) => `${name}-mega-y` },
@@ -468,7 +542,6 @@ const FORM_RULES = [
   { prefix: "雌性", suffix: "", transform: (name) => `${name}-female` }
 ];
 
-// 透過 PokeAPI GraphQL 端點查詢繁體中文名 (language_id: 4 為繁體中文, 12 為簡體中文)
 async function queryGraphQLByChineseName(chineseName) {
   const query = `
     query getSpeciesByName($name: String!) {
@@ -500,17 +573,48 @@ async function queryGraphQLByChineseName(chineseName) {
   return null;
 }
 
-// 智慧解析使用者輸入
+async function queryGraphQLByMoveChineseName(chineseName) {
+  const query = `
+    query getMoveByName($name: String!) {
+      pokemon_v2_movename(where: {name: {_eq: $name}, _or: [{language_id: {_eq: 4}}, {language_id: {_eq: 12}}]}) {
+        name
+        pokemon_v2_move {
+          id
+          name
+        }
+      }
+    }
+  `;
+
+  const res = await fetch("https://beta.pokeapi.co/graphql/v1beta", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      query: query,
+      variables: { name: chineseName }
+    })
+  });
+
+  if (!res.ok) throw new Error("GraphQL 連線失敗");
+  const json = await res.json();
+  const list = json.data?.pokemon_v2_movename;
+  if (list && list.length > 0) {
+    return {
+      apiName: list[0].pokemon_v2_move.name,
+      displayName: list[0].name
+    };
+  }
+  return null;
+}
+
 async function resolveQueryToApiName(userInput) {
   let q = userInput.trim();
   if (!q) throw new Error("請輸入寶可夢名稱或編號");
 
-  // 1. 純英文或純編號直接使用
   if (!/[\u4e00-\u9fa5]/.test(q)) {
     return { apiName: q.toLowerCase().replace(/\s+/g, "-"), displayName: q };
   }
 
-  // 2. 檢查特殊形態詞綴
   for (const rule of FORM_RULES) {
     let coreName = q;
     let matched = false;
@@ -526,11 +630,9 @@ async function resolveQueryToApiName(userInput) {
 
     if (matched) {
       coreName = coreName.trim();
-      // 特殊免查詢常數
       if (coreName === "厄鬼椪" || coreName === "洛托姆" || coreName === "武道熊師") {
         return { apiName: rule.transform(coreName), displayName: q };
       }
-      // 透過 GraphQL 即時查詢基礎 species
       const baseSpeciesName = await queryGraphQLByChineseName(coreName);
       if (baseSpeciesName) {
         return { apiName: rule.transform(baseSpeciesName), displayName: q };
@@ -538,13 +640,28 @@ async function resolveQueryToApiName(userInput) {
     }
   }
 
-  // 3. 基礎中文名稱直接 GraphQL 查詢 (支援 古鼎鹿、振翼髮、妙蛙種子 等)
   const speciesName = await queryGraphQLByChineseName(q);
   if (speciesName) {
     return { apiName: speciesName, displayName: q };
   }
 
   throw new Error(`查無「${q}」，請確認繁體中文官方名稱或形態`);
+}
+
+async function resolveMoveToApiName(userInput) {
+  let q = userInput.trim();
+  if (!q) throw new Error("請輸入招式名稱");
+
+  if (!/[\u4e00-\u9fa5]/.test(q)) {
+    return { apiName: q.toLowerCase().replace(/\s+/g, "-"), displayName: q };
+  }
+
+  const moveData = await queryGraphQLByMoveChineseName(q);
+  if (moveData) {
+    return moveData;
+  }
+
+  throw new Error(`查無招式「${q}」，請確認繁體中文官方名稱`);
 }
 
 // ==================== 3. 數值與對戰核心 ====================
@@ -567,20 +684,61 @@ function getBoostMultiplier(stage) {
 
 let attackerData = null;
 let defenderData = null;
+let currentMoveData = null;
+
+// 計算特殊動態威力招式 (體重、速度)
+function checkAndUpdateDynamicMovePower(atkSpe, defSpe) {
+  if (!currentMoveData) return;
+  const moveName = currentMoveData.rawName;
+  
+  if (moveName === "grass-knot" || moveName === "low-kick") {
+    const defWeight = defenderData ? (defenderData.weight / 10) : 50;
+    let power = 20;
+    if (defWeight >= 200.0) power = 120;
+    else if (defWeight >= 100.0) power = 100;
+    else if (defWeight >= 50.0) power = 80;
+    else if (defWeight >= 25.0) power = 60;
+    else if (defWeight >= 10.0) power = 40;
+    else power = 20;
+    document.getElementById("move-power").value = power;
+  }
+  else if (moveName === "heavy-slam" || moveName === "heat-crash") {
+    const atkWeight = attackerData ? (attackerData.weight / 10) : 100;
+    const defWeight = defenderData ? (defenderData.weight / 10) : 50;
+    const ratio = atkWeight / Math.max(0.1, defWeight);
+    let power = 40;
+    if (ratio >= 5.0) power = 120;
+    else if (ratio >= 4.0) power = 100;
+    else if (ratio >= 3.0) power = 80;
+    else if (ratio >= 2.0) power = 60;
+    else power = 40;
+    document.getElementById("move-power").value = power;
+  }
+  else if (moveName === "electro-ball") {
+    const ratio = atkSpe / Math.max(1, defSpe);
+    let power = 40;
+    if (ratio >= 4.0) power = 150;
+    else if (ratio >= 3.0) power = 120;
+    else if (ratio >= 2.0) power = 80;
+    else if (ratio >= 1.0) power = 60;
+    else power = 40;
+    document.getElementById("move-power").value = power;
+  }
+  else if (moveName === "gyro-ball") {
+    const power = Math.min(150, Math.floor((25 * defSpe) / Math.max(1, atkSpe)) + 1);
+    document.getElementById("move-power").value = power;
+  }
+}
 
 function calculateDamage() {
   const isSpecial = document.getElementById("move-category").value === "special";
-  const movePower = Number(document.getElementById("move-power").value) || 0;
   const moveType = document.getElementById("move-type").value;
+  const isBodyPress = currentMoveData && (currentMoveData.rawName === "body-press");
 
-  // 攻擊方數值
-  const atkBase = Number(document.getElementById("atk-base").value);
-  const atkEV = Number(document.getElementById("atk-ev").value);
-  const atkNature = Number(document.getElementById("atk-nature").value);
-  const atkStat = calcStat(atkBase, atkEV, atkNature, false);
-  document.getElementById("atk-stat-total").value = atkStat;
+  const weather = document.getElementById("env-weather").value;
+  const terrain = document.getElementById("env-terrain").value;
 
-  // 攻擊方速度
+  // 速度計算
   const atkSpeBase = Number(document.getElementById("atk-spe-base").value);
   const atkSpeEV = Number(document.getElementById("atk-spe-ev").value);
   const atkSpeNature = Number(document.getElementById("atk-spe-nature").value);
@@ -589,24 +747,6 @@ function calculateDamage() {
   const finalAtkSpe = Math.floor(atkSpeStat * getBoostMultiplier(atkSpeStage));
   document.getElementById("atk-spe-total").value = atkSpeStat;
 
-  const atkStage = Number(document.getElementById("atk-boost").value);
-  const atkItemMod = Number(document.getElementById("atk-item-mod").value);
-  const atkCustomMod = Number(document.getElementById("atk-custom-mod").value) || 1.0;
-  const finalAtk = Math.floor(atkStat * getBoostMultiplier(atkStage) * atkItemMod * atkCustomMod);
-
-  // 防守方數值
-  const hpBase = Number(document.getElementById("hp-base").value);
-  const hpEV = Number(document.getElementById("hp-ev").value);
-  const maxHP = calcStat(hpBase, hpEV, 1.0, true);
-  document.getElementById("hp-stat-total").value = maxHP;
-
-  const defBase = Number(document.getElementById("def-base").value);
-  const defEV = Number(document.getElementById("def-ev").value);
-  const defNature = Number(document.getElementById("def-nature").value);
-  const defStat = calcStat(defBase, defEV, defNature, false);
-  document.getElementById("def-stat-total").value = defStat;
-
-  // 防守方速度
   const defSpeBase = Number(document.getElementById("def-spe-base").value);
   const defSpeEV = Number(document.getElementById("def-spe-ev").value);
   const defSpeNature = Number(document.getElementById("def-spe-nature").value);
@@ -615,15 +755,81 @@ function calculateDamage() {
   const finalDefSpe = Math.floor(defSpeStat * getBoostMultiplier(defSpeStage));
   document.getElementById("def-spe-total").value = defSpeStat;
 
-  const defStage = Number(document.getElementById("def-boost").value);
-  const screenMod = Number(document.getElementById("def-screen").value);
-  const defCustomMod = Number(document.getElementById("def-custom-mod").value) || 1.0;
-  const finalDef = Math.floor(defStat * getBoostMultiplier(defStage));
+  // 動態更新招式威力
+  checkAndUpdateDynamicMovePower(finalAtkSpe, finalDefSpe);
+  let movePower = Number(document.getElementById("move-power").value) || 0;
+
+  // 場地對招式威力的影響 (Grass/Electric/Psychic 1.3x, Grassy 地震等 0.5x)
+  const isAtkGrounded = attackerData ? (attackerData.type1 !== "flying" && attackerData.type2 !== "flying") : true;
+  if (isAtkGrounded) {
+    if (terrain === "electric" && moveType === "electric") movePower = Math.floor(movePower * 1.3);
+    else if (terrain === "grassy" && moveType === "grass") movePower = Math.floor(movePower * 1.3);
+    else if (terrain === "psychic" && moveType === "psychic") movePower = Math.floor(movePower * 1.3);
+  }
+  if (terrain === "grassy" && (currentMoveData?.rawName === "earthquake" || currentMoveData?.rawName === "bulldoze" || currentMoveData?.rawName === "magnitude")) {
+    movePower = Math.floor(movePower * 0.5);
+  }
+
+  // 攻擊方攻擊力/物防計算
+  const atkBase = Number(document.getElementById("atk-base").value);
+  const atkEV = Number(document.getElementById("atk-ev").value);
+  const atkNature = Number(document.getElementById("atk-nature").value);
+  const atkStat = calcStat(atkBase, atkEV, atkNature, false);
+  document.getElementById("atk-stat-total").value = atkStat;
+
+  const atkDefBase = Number(document.getElementById("atk-def-base").value);
+  const atkDefEV = Number(document.getElementById("atk-def-ev").value);
+  const atkDefNature = Number(document.getElementById("atk-def-nature").value);
+  const atkDefStat = calcStat(atkDefBase, atkDefEV, atkDefNature, false);
+  document.getElementById("atk-def-total").value = atkDefStat;
+
+  const atkItemMod = Number(document.getElementById("atk-item-mod").value);
+  const atkAbilityMod = Number(document.getElementById("atk-ability-mod").value) || 1.0;
+
+  let finalAtk = 0;
+  if (isBodyPress) {
+    const atkDefStage = Number(document.getElementById("atk-def-boost").value);
+    finalAtk = Math.floor(atkDefStat * getBoostMultiplier(atkDefStage) * atkItemMod * atkAbilityMod);
+  } else {
+    const atkStage = Number(document.getElementById("atk-boost").value);
+    finalAtk = Math.floor(atkStat * getBoostMultiplier(atkStage) * atkItemMod * atkAbilityMod);
+  }
+
+  // 防守方耐久計算
+  const hpBase = Number(document.getElementById("hp-base").value);
+  const hpEV = Number(document.getElementById("hp-ev").value);
+  const maxHP = calcStat(hpBase, hpEV, 1.0, true);
+  document.getElementById("hp-stat-total").value = maxHP;
+
+  const defBase = Number(document.getElementById("def-base").value);
+  const defEV = Number(document.getElementById("def-ev").value);
+  const defNature = Number(document.getElementById("def-nature").value);
+  let defStat = calcStat(defBase, defEV, defNature, false);
 
   const defType1 = document.getElementById("def-type1").value;
   const defType2 = document.getElementById("def-type2").value;
-  const eff = getEffectiveness(moveType, defType1, defType2);
+
+  // 天氣防禦加成 (沙暴岩石系特防 1.5x, 雪天冰系物防 1.5x)
+  if (weather === "sandstorm" && isSpecial && (defType1 === "rock" || defType2 === "rock")) {
+    defStat = Math.floor(defStat * 1.5);
+  } else if (weather === "snow" && !isSpecial && (defType1 === "ice" || defType2 === "ice")) {
+    defStat = Math.floor(defStat * 1.5);
+  }
+  document.getElementById("def-stat-total").value = defStat;
+
+  const defStage = Number(document.getElementById("def-boost").value);
+  const screenMod = Number(document.getElementById("def-screen").value);
+  const defAbilityMod = Number(document.getElementById("def-ability-mod").value) || 1.0;
+  const finalDef = Math.floor(defStat * getBoostMultiplier(defStage));
+
+  let eff = getEffectiveness(moveType, defType1, defType2);
   const stab = document.getElementById("atk-stab").checked ? 1.5 : 1.0;
+
+  // 薄霧場地對龍系招式減傷 0.5x
+  const isDefGrounded = (defType1 !== "flying" && defType2 !== "flying");
+  if (terrain === "misty" && isDefGrounded && moveType === "dragon") {
+    eff *= 0.5;
+  }
 
   document.getElementById("effectiveness-badge").textContent = `屬性倍率: ${eff}x`;
 
@@ -654,16 +860,27 @@ function calculateDamage() {
     return;
   }
 
+  // 天氣倍率 (日照火 1.5x, 水 0.5x; 雨天水 1.5x, 火 0.5x)
+  let weatherMod = 1.0;
+  if (weather === "sun") {
+    if (moveType === "fire") weatherMod = 1.5;
+    else if (moveType === "water") weatherMod = 0.5;
+  } else if (weather === "rain") {
+    if (moveType === "water") weatherMod = 1.5;
+    else if (moveType === "fire") weatherMod = 0.5;
+  }
+
   const baseDmg = Math.floor((Math.floor((22 * movePower * finalAtk) / Math.max(1, finalDef)) / 50) + 2);
 
   const rolls = [];
   let koCount = 0;
   for (let r = 85; r <= 100; r++) {
     let dmg = Math.floor((baseDmg * r) / 100);
+    dmg = Math.floor(dmg * weatherMod);
     dmg = Math.floor(dmg * screenMod);
     dmg = Math.floor(dmg * stab);
     dmg = Math.floor(dmg * eff);
-    dmg = Math.floor(dmg * defCustomMod);
+    dmg = Math.floor(dmg * defAbilityMod);
     rolls.push(dmg);
     if (dmg >= maxHP) koCount++;
   }
@@ -728,6 +945,7 @@ async function fetchPokemon(query) {
     displayName: displayName,
     rawName: data.name,
     id: data.id,
+    weight: data.weight || 500,
     hp: stats.hp || 100,
     atk: stats.attack || 100,
     def: stats.defense || 100,
@@ -739,11 +957,34 @@ async function fetchPokemon(query) {
   };
 }
 
+async function fetchMove(query) {
+  const { apiName, displayName } = await resolveMoveToApiName(query);
+
+  const response = await fetch(`https://pokeapi.co/api/v2/move/${apiName}`);
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error(`查無招式「${query}」(API: ${apiName})`);
+    }
+    throw new Error(`招式連線失敗 (${response.status})`);
+  }
+  const data = await response.json();
+
+  return {
+    displayName: displayName,
+    rawName: data.name,
+    id: data.id,
+    power: data.power || 0,
+    type: data.type.name,
+    damageClass: data.damage_class.name
+  };
+}
+
 function updateAttackerStats() {
   if (!attackerData) return;
   const isSpecial = document.getElementById("move-category").value === "special";
   document.getElementById("atk-base-label").textContent = isSpecial ? "特攻種族值" : "物攻種族值";
   document.getElementById("atk-base").value = isSpecial ? attackerData.spa : attackerData.atk;
+  document.getElementById("atk-def-base").value = attackerData.def;
   document.getElementById("atk-spe-base").value = attackerData.spe;
 }
 
@@ -820,6 +1061,43 @@ async function loadDefender() {
   }
 }
 
+async function loadMove() {
+  const input = document.getElementById("move-query");
+  const btn = document.getElementById("move-load-btn");
+  const status = document.getElementById("move-status");
+
+  btn.disabled = true;
+  status.textContent = "即時 GraphQL 查詢招式中...";
+  status.className = "status-msg loading";
+
+  try {
+    const data = await fetchMove(input.value);
+    
+    if (data.damageClass === "status") {
+      throw new Error(`「${data.displayName}」為變化招式，無直接傷害數值`);
+    }
+
+    currentMoveData = data;
+    document.getElementById("move-type").value = data.type;
+    document.getElementById("move-category").value = data.damageClass;
+    document.getElementById("move-power").value = data.power;
+
+    updateAttackerStats();
+    updateDefenderStats();
+    checkSTAB();
+    calculateDamage();
+
+    const currentBP = document.getElementById("move-power").value;
+    status.textContent = `✓ 成功載入: ${data.displayName} (威力: ${currentBP}, 屬性: ${TYPE_NAMES[data.type] || data.type})`;
+    status.className = "status-msg success";
+  } catch (err) {
+    status.textContent = `✕ ${err.message}`;
+    status.className = "status-msg error";
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ==================== 5. 初始化與事件監聽 ====================
 function initUI() {
   const moveType = document.getElementById("move-type");
@@ -844,12 +1122,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.getElementById("atk-load-btn").addEventListener("click", loadAttacker);
   document.getElementById("def-load-btn").addEventListener("click", loadDefender);
+  document.getElementById("move-load-btn").addEventListener("click", loadMove);
 
   document.getElementById("atk-query").addEventListener("keypress", (e) => {
     if (e.key === "Enter") loadAttacker();
   });
   document.getElementById("def-query").addEventListener("keypress", (e) => {
     if (e.key === "Enter") loadDefender();
+  });
+  document.getElementById("move-query").addEventListener("keypress", (e) => {
+    if (e.key === "Enter") loadMove();
   });
 
   document.getElementById("move-category").addEventListener("change", () => {
@@ -864,15 +1146,16 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   document.querySelectorAll("input, select").forEach(el => {
-    if (el.id !== "atk-query" && el.id !== "def-query") {
+    if (el.id !== "atk-query" && el.id !== "def-query" && el.id !== "move-query") {
       el.addEventListener("input", calculateDamage);
       el.addEventListener("change", calculateDamage);
     }
   });
 
-  // 預設載入對戰範例：烈咬陸鯊 vs 古鼎鹿
+  // 預設載入對戰範例：烈咬陸鯊 vs 古鼎鹿 (地震)
   document.getElementById("atk-query").value = "烈咬陸鯊";
   document.getElementById("def-query").value = "古鼎鹿";
+  document.getElementById("move-query").value = "地震";
   loadAttacker();
   loadDefender();
 });
