@@ -89,11 +89,11 @@
 <div class="container">
   <header>
     <h1>Lv.50 寶可夢傷害計算器</h1>
-    <p>全世代繁體中文即時按需查詢・天氣與場地加成・四災/悖謬/Mega 全型態動態載入</p>
+    <p>全世代繁體中文即時按需查詢・天氣/場地環境・冷凍乾燥與特殊相剋判定</p>
   </header>
 
   <div id="init-banner" class="init-banner">
-    <span>✓ 即時 GraphQL 繁中連線已啟用：支援天氣、場地、道具加成、特性加成與撲擊防禦結算！</span>
+    <span>✓ 即時 GraphQL 繁中連線已啟用：支援冷凍乾燥（打水2x）、千箭齊發、天氣、場地與撲擊防禦結算！</span>
   </div>
 
   <!-- 天氣與場地環境卡片 -->
@@ -145,7 +145,7 @@
       <div class="form-group">
         <label>搜尋招式 (繁體中文 / 英文 / 編號)</label>
         <div class="api-search-row">
-          <input type="text" id="move-query" placeholder="例: 撲擊, 陀螺球, 電球, 地震">
+          <input type="text" id="move-query" placeholder="例: 冷凍乾燥, 撲擊, 陀螺球, 地震">
           <button class="btn" id="move-load-btn">載入招式</button>
         </div>
       </div>
@@ -501,12 +501,31 @@ const TYPE_CHART = {
   fairy: { fire: 0.5, fighting: 2, poison: 0.5, dragon: 2, dark: 2, steel: 0.5 }
 };
 
-function getEffectiveness(moveType, t1, t2) {
+function getEffectiveness(moveType, t1, t2, moveName = "") {
   let eff = 1.0;
-  if (TYPE_CHART[moveType]) {
-    if (t1 !== "none" && TYPE_CHART[moveType][t1] !== undefined) eff *= TYPE_CHART[moveType][t1];
-    if (t2 !== "none" && TYPE_CHART[moveType][t2] !== undefined) eff *= TYPE_CHART[moveType][t2];
+  
+  // 處理第一屬性
+  if (t1 !== "none") {
+    if (moveName === "freeze-dry" && t1 === "water") {
+      eff *= 2.0; // 冷凍乾燥對水屬性為 2x
+    } else if (moveName === "thousand-arrows" && t1 === "flying") {
+      eff *= 1.0; // 千箭齊發可擊中飛行屬性
+    } else if (TYPE_CHART[moveType] && TYPE_CHART[moveType][t1] !== undefined) {
+      eff *= TYPE_CHART[moveType][t1];
+    }
   }
+
+  // 處理第二屬性
+  if (t2 !== "none") {
+    if (moveName === "freeze-dry" && t2 === "water") {
+      eff *= 2.0; // 冷凍乾燥對水屬性為 2x
+    } else if (moveName === "thousand-arrows" && t2 === "flying") {
+      eff *= 1.0;
+    } else if (TYPE_CHART[moveType] && TYPE_CHART[moveType][t2] !== undefined) {
+      eff *= TYPE_CHART[moveType][t2];
+    }
+  }
+
   return eff;
 }
 
@@ -733,7 +752,8 @@ function checkAndUpdateDynamicMovePower(atkSpe, defSpe) {
 function calculateDamage() {
   const isSpecial = document.getElementById("move-category").value === "special";
   const moveType = document.getElementById("move-type").value;
-  const isBodyPress = currentMoveData && (currentMoveData.rawName === "body-press");
+  const moveRawName = currentMoveData ? currentMoveData.rawName : "";
+  const isBodyPress = (moveRawName === "body-press");
 
   const weather = document.getElementById("env-weather").value;
   const terrain = document.getElementById("env-terrain").value;
@@ -766,7 +786,7 @@ function calculateDamage() {
     else if (terrain === "grassy" && moveType === "grass") movePower = Math.floor(movePower * 1.3);
     else if (terrain === "psychic" && moveType === "psychic") movePower = Math.floor(movePower * 1.3);
   }
-  if (terrain === "grassy" && (currentMoveData?.rawName === "earthquake" || currentMoveData?.rawName === "bulldoze" || currentMoveData?.rawName === "magnitude")) {
+  if (terrain === "grassy" && (moveRawName === "earthquake" || moveRawName === "bulldoze" || moveRawName === "magnitude")) {
     movePower = Math.floor(movePower * 0.5);
   }
 
@@ -822,7 +842,8 @@ function calculateDamage() {
   const defAbilityMod = Number(document.getElementById("def-ability-mod").value) || 1.0;
   const finalDef = Math.floor(defStat * getBoostMultiplier(defStage));
 
-  let eff = getEffectiveness(moveType, defType1, defType2);
+  // 屬性相剋判定（含冷凍乾燥、千箭齊發）
+  let eff = getEffectiveness(moveType, defType1, defType2, moveRawName);
   const stab = document.getElementById("atk-stab").checked ? 1.5 : 1.0;
 
   // 薄霧場地對龍系招式減傷 0.5x
