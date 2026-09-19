@@ -66,6 +66,7 @@
     border-radius: 8px;
     max-height: 260px;
     overflow-y: auto;
+    overscroll-behavior: contain;
     z-index: 999;
     box-shadow: 0 10px 24px rgba(0,0,0,0.8);
     display: none;
@@ -1063,7 +1064,7 @@ function searchLocalPkmn(query) {
              const fName = f.name.toLowerCase();
              return fName.includes(rawQ) || fName.includes(tQ);
            }));
-  }).slice(0, 15);
+  });
 }
 
 function searchLocalMoves(query) {
@@ -1076,7 +1077,7 @@ function searchLocalMoves(query) {
     const mType = m.type ? m.type.toLowerCase() : '';
     return mName.includes(rawQ) || mName.includes(tQ) ||
            enName.includes(rawQ) || mType.includes(rawQ) || mType.includes(tQ);
-  }).slice(0, 15);
+  });
 }
 
 function setupAutocomplete(side) {
